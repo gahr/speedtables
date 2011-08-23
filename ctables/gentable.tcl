@@ -1567,7 +1567,9 @@ struct $table *${table}_find_or_create (Tcl_Interp *interp, CTable *ctable, char
     if(!nextRow) {
 #ifdef WITH_SHARED_TABLES
         if(isShared) {
+			aggregate_timing_start("${table}_foc_shmalloc1");
 	    nextRow = (struct $table *)shmalloc(ctable->share, sizeof(struct $table));
+			aggregate_timing_stop("${table}_foc_shmalloc1");
 	    if(!nextRow) {
 		if(ctable->share_panic) ${table}_shmpanic(ctable);
 		TclShmError(interp, key);
@@ -1582,7 +1584,9 @@ struct $table *${table}_find_or_create (Tcl_Interp *interp, CTable *ctable, char
 
 #ifdef WITH_SHARED_TABLES
     if(isShared) {
+			aggregate_timing_start("${table}_foc_shmalloc2");
         key_value = (char *)shmalloc(ctable->share, strlen(key)+1);
+			aggregate_timing_stop("${table}_foc_shmalloc2");
 	if(!key_value) {
 	    if(ctable->share_panic) ${table}_shmpanic(ctable);
 	    TclShmError(interp, key);
@@ -1593,11 +1597,15 @@ struct $table *${table}_find_or_create (Tcl_Interp *interp, CTable *ctable, char
     }
 #endif
 
+	aggregate_timing_start("${table}_foc_StoreHashEntry");
     row = (struct $table *)ctable_StoreHashEntry (ctable->keyTablePtr, key_value, (ctable_HashEntry *)nextRow, flags, indexCtlPtr);
+	aggregate_timing_stop("${table}_foc_StoreHashEntry");
 
     // If we actually added a row, add it to the hash
     if (*indexCtlPtr) {
+	aggregate_timing_start("${table}_foc_ListInsertHead");
 	ctable_ListInsertHead (&ctable->ll_head, (ctable_BaseRow *)row, 0);
+	aggregate_timing_stop("${table}_foc_ListInsertHead");
 	ctable->count++;
 	// printf ("created new entry for '%s'\n", key);
 
@@ -5910,6 +5918,7 @@ proc install_ch_files {includeDir} {
 	ctable.h ctable_search.c ctable_lists.c ctable_batch.c
 	boyer_moore.c jsw_rand.c jsw_rand.h jsw_slib.c jsw_slib.h
 	speedtables.h speedtableHash.c ctable_io.c ctable_qsort.c
+	aggregate_timing.c aggregate_timing.h
     }
 
     if {$withSharedTables} {
@@ -6044,6 +6053,8 @@ proc start_codegen {} {
     ::ctable::emit "#include \"ctable_io.c\""
 
     ::ctable::emit "#include \"ctable_search.c\""
+
+    ::ctable::emit "#include \"aggregate_timing.c\""
 
     ::ctable::emit "static char *sourceCode = \"[::ctable::cquote "CExtension $::ctable::extension $::ctable::extensionVersion { $::ctable::sourceCode }"]\";"
     ::ctable::emit ""

@@ -709,7 +709,9 @@ int ${table}ObjCmd (ClientData cData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
 	    sprintf(key = keyString, "%u", ctable->autoRowNumber++);
         }
 
+aggregate_timing_start("${table}_find_or_create");
         row = ${table}_find_or_create (interp, ctable, key, &indexCtl);
+aggregate_timing_stop("${table}_find_or_create");
 	if(!row) {
 	    Tcl_AppendResult (interp, " while processing key-value list", (char *)NULL);
 	    return TCL_ERROR;
@@ -722,9 +724,12 @@ int ${table}ObjCmd (ClientData cData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
 	    }
 	}
 
-        if (indexCtl == CTABLE_INDEX_NEW)
-	    if (${table}_index_defaults(interp, ctable, row) == TCL_ERROR)
-	        return TCL_ERROR;
+        if (indexCtl == CTABLE_INDEX_NEW) {
+aggregate_timing_start("${table}_index_defaults");
+	    i = ${table}_index_defaults(interp, ctable, row);
+aggregate_timing_stop("${table}_index_defaults");
+	    if (i == TCL_ERROR) return TCL_ERROR;
+	}
 
         Tcl_SetObjResult (interp, Tcl_NewStringObj (key, -1));
 
@@ -757,7 +762,9 @@ int ${table}ObjCmd (ClientData cData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
 	    return TCL_ERROR;
 	}
 
+aggregate_timing_start("${table}_find_or_create");
         row = ${table}_find_or_create (interp, ctable, Tcl_GetString (keyObj), &indexCtl);
+aggregate_timing_stop("${table}_find_or_create");
 	if(!row) {
 	    Tcl_AppendResult (interp, " while processing key-value list", (char *)NULL);
 	    return TCL_ERROR;
@@ -788,9 +795,12 @@ int ${table}ObjCmd (ClientData cData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
 	    }
 	}
 
-        if (indexCtl == CTABLE_INDEX_NEW)
-	    if (${table}_index_defaults(interp, ctable, row) == TCL_ERROR)
-	        return TCL_ERROR;
+        if (indexCtl == CTABLE_INDEX_NEW) {
+aggregate_timing_start("${table}_index_defaults");
+	    i = ${table}_index_defaults(interp, ctable, row);
+aggregate_timing_stop("${table}_index_defaults");
+	    if (i == TCL_ERROR) return TCL_ERROR;
+	}
 
 	break;
       }
