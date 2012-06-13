@@ -159,7 +159,8 @@ enum ctable_types {
     CTABLE_TYPE_DOUBLE,
     CTABLE_TYPE_INET,
     CTABLE_TYPE_TCLOBJ,
-    CTABLE_TYPE_KEY
+    CTABLE_TYPE_KEY,
+    CTABLE_TYPE_REFSTRING
 };
 
 // define ctable linked lists structures et al
@@ -391,6 +392,16 @@ typedef struct {
     // Unique search ID for memoization
     int					 sequence;
 } CTableSearch;
+
+typedef struct {
+  int    refcount;
+
+  // size of the value, not including the final trailing null.
+  int    length;
+
+  // the value must be last in the structure, since this element's size will grow to hold the actual string length.
+  char   value[1]; 
+} ctable_RefString;
 
 typedef struct {
     CONST char              *name;

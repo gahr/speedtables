@@ -5,7 +5,7 @@ package require speedtable
 CExtension bullseye 1.0 {
     CTable Pasture {
         varstring alpha
-        varstring beta indexed 1
+        refstring beta indexed 1
         varstring delta
         varstring gamma indexed 1
     }
@@ -37,10 +37,11 @@ puts "created"
 # Store some stuff in the two tables.
 #
 for {set i 0} {$i < 10000} {incr i} {
-    mypasture store [list alpha alfa$i beta bravo$i delta delta$i gamma golf$i]
+	set j [expr {$i % 5}]
+    mypasture store [list alpha alfa$i beta bravo$j delta delta$i gamma golf$i]
 
     if {$i % 150 == 0} {
-        mybarn store [list alpha alfa$i beta bravo$i delta delta$i gamma golf$i]
+        mybarn store [list alpha alfa$i beta bravo$j delta delta$i gamma golf$i]
     }
 }
 

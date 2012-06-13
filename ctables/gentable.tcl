@@ -83,7 +83,7 @@ namespace eval ctable {
 
     ## ctableTypes must line up with the enumerated typedef "ctable_types"
     ## in ctable.h
-    set ctableTypes "boolean fixedstring varstring char mac short int long wide float double inet tclobj key"
+    set ctableTypes "boolean fixedstring varstring char mac short int long wide float double inet tclobj key refstring"
 
     set reservedWords "bool char short int long wide float double"
 
@@ -849,6 +849,45 @@ variable fixedstringSetSource {
 }
 
 #
+# refstringSetSource - code we run subst over to generate a set of a 
+# reference counted string.
+#
+variable refstringSetSource {
+      case $optname: {
+	char *string;
+	int   len;
+[gen_null_check_during_set_source $table $fieldName]
+	string = Tcl_GetStringFromObj (obj, &len);
+[gen_unset_null_during_set_source $table $fieldName \
+	"if (len == 0 && [expr [string length $default] > 0]) string = \"$default\";
+	if (*string == *row->$fieldName->value && strcmp(row->$fieldName->value, string, $length) == 0)
+	    return TCL_OK;"]
+[gen_ctable_remove_from_index $fieldName]
+
+
+if (--row->$fieldName->refcount <= 0) {
+	// structure is not used by anyone else, so we have to free it.
+	ckfree(row->$fieldName);
+}
+
+//TODO: see if the new value already exists in the index.
+if (found) {
+	row->$fieldName = foundrow;
+	row->$fieldName->refcount++;
+} else {
+	// allocate a new ctable_RefString 
+	row->$fieldName = ckalloc(sizeof(ctable_RefString) + $length);
+	row->$fieldName->refcount = 1;
+	row->$fieldName->length = $length;
+	strncpy (row->$fieldName->value, string, $length);
+}
+
+[gen_ctable_insert_into_index $fieldName]
+	break;
+      }
+}
+
+#
 # inetSetSource - code we run subst over to generate a set of an IPv4
 # internet address.
 #
@@ -1103,7 +1142,20 @@ variable varstringSortSource {
 }
 
 #
-# fixedstringSortSource - code we run subst over to generate a comapre of a 
+# refstringSortSource - code we run subst over to generate a compare of 
+# a string for use in a sort.
+#
+variable refstringSortSource {
+      case $fieldEnum: {
+[gen_null_default_check_during_sort_comp $table $fieldName]
+
+        result = direction * strcmp (row1->$fieldName->value, row2->$fieldName->value);
+	break;
+      }
+}
+
+#
+# fixedstringSortSource - code we run subst over to generate a compare of a 
 # fixed-length string for use in a sort.
 #
 variable fixedstringSortSource {
@@ -1115,7 +1167,7 @@ variable fixedstringSortSource {
 }
 
 #
-# binaryDataSortSource - code we run subst over to generate a comapre of a 
+# binaryDataSortSource - code we run subst over to generate a compare of a 
 # inline binary arrays (inets and mac addrs) for use in a sort.
 #
 variable binaryDataSortSource {
@@ -1424,7 +1476,7 @@ variable varstringCompSource {
 }
 
 #
-# fixedstringCompSource - code we run subst over to generate a comapre of a 
+# fixedstringCompSource - code we run subst over to generate a compare of a 
 # fixed-length string.
 #
 variable fixedstringCompSource {
@@ -1438,7 +1490,21 @@ variable fixedstringCompSource {
 }
 
 #
-# binaryDataCompSource - code we run subst over to generate a comapre of a 
+# refstringCompSource - code we run subst over to generate a compare of a 
+# reference counted string.
+#
+variable refstringCompSource {
+        case $fieldEnum: {
+          int     strcmpResult;
+
+[gen_standard_comp_null_check_source $table $fieldName]
+          strcmpResult = strncmp (row->$fieldName->value, row1->$fieldName->value, $length);
+[gen_standard_comp_switch_source $fieldName]
+        }
+}
+
+#
+# binaryDataCompSource - code we run subst over to generate a compare of a 
 # binary data.
 #
 variable binaryDataCompSource {
@@ -2392,6 +2458,7 @@ proc gen_decl_filter_arg {type name} {
 	float		"double "
 	double		"double "
 	key		"char *"
+	refstring   "char *"
     }
     array set init_map {
 	boolean		" = 0"
@@ -2403,6 +2470,7 @@ proc gen_decl_filter_arg {type name} {
 	float		" = 0.0"
 	double		" = 0.0"
 	key		" = NULL"
+    refstring    " = NULL"
     }
 	
     if [info exists type_map($type)] {
@@ -2416,7 +2484,7 @@ proc gen_decl_filter_arg {type name} {
 # Generate code to extract one argument from a list of arguments
 #
 proc gen_get_filter_arg {type name source} {
-    if {"$type" == "varstring" || "$type" == "fixedstring" || "$type" == "key"} {
+    if {"$type" == "varstring" || "$type" == "fixedstring" || "$type" == "key" || "$type" == "refstring"} {
 	emit "        $name = Tcl_GetString ($source);"
     } elseif {"$type" == "float" || "$type" == "double"} {
 	emit "        if(Tcl_GetDoubleFromObj (interp, $source, &$name) != TCL_OK)"
@@ -2644,6 +2712,13 @@ proc varstring {fieldName args} {
 }
 
 #
+# refstring - define a reference-counted string field
+#
+proc refstring {fieldName args} {
+    deffield $fieldName [linsert $args 0 type refstring needsQuoting 1]
+}
+
+#
 # char - define a single character field -- this should probably just be
 #  fixedstring[1] but it's simpler.  shrug.
 #
@@ -2828,6 +2903,19 @@ proc gen_defaults_subr {struct} {
 	        emit "        $baseCopy.$fieldName = (char *) NULL;"
 		emit "        $baseCopy._${fieldName}Length = 0;"
 		emit "        $baseCopy._${fieldName}AllocatedLength = 0;"
+
+		if {![info exists field(notnull)] || !$field(notnull)} {
+		    if {[info exists field(default)]} {
+			emit "        $baseCopy._${fieldName}IsNull = 0;"
+		    } else {
+			emit "        $baseCopy._${fieldName}IsNull = 1;"
+		    }
+		}
+	    }
+
+	    refstring {
+# TODO: handle field(default)
+	        emit "        $baseCopy.$fieldName = (ctable_RefString *) NULL;"
 
 		if {![info exists field(notnull)] || !$field(notnull)} {
 		    if {[info exists field(default)]} {
@@ -3221,6 +3309,10 @@ proc gen_struct {} {
 		putfield int  "_$field(name)AllocatedLength"
 	    }
 
+	    refstring {
+		putfield ctable_RefString "*$field(name)"
+	    }
+
 	    fixedstring {
 		putfield char "$field(name)\[$field(length)]"
 	    }
@@ -3347,6 +3439,19 @@ proc emit_set_varstring_field {table fieldName default defaultLength} {
     set optname [field_to_enum $fieldName]
 
     emit [string range [subst $varstringSetSource] 1 end-1]
+}
+
+#
+# emit_set_refstring_field - emit code to set a refstring field
+#
+proc emit_set_refstring_field {table fieldName default defaultLength} {
+    variable refstringSetSource
+
+    set default [cquote $default]
+
+    set optname [field_to_enum $fieldName]
+
+    emit [string range [subst $refstringSetSource] 1 end-1]
 }
 
 #           
@@ -3614,6 +3719,10 @@ proc gen_sets {} {
 
 	    fixedstring {
 		emit_set_fixedstring_field $fieldName $field(length)
+	    }
+
+	    refstring {
+		emit_set_refstring_field $table $fieldName $default $defaultLength
 	    }
 
 	    varstring {
@@ -4182,6 +4291,14 @@ proc gen_new_obj {type fieldName} {
 	    }
 	}
 
+	refstring {
+	    if {![info exists field(notnull)] || !$field(notnull)} {
+		return "row->_${fieldName}IsNull ? ${table}_NullValueObj : Tcl_NewStringObj (row->$fieldName->value, row->$fieldName->length)"
+	    } else {
+		return "Tcl_NewStringObj (row->$fieldName->value, row->$fieldName->length)"
+	    }
+	}
+
 	inet {
 	    if {![info exists field(notnull)] || !$field(notnull)} {
 		return "row->_${fieldName}IsNull ? ${table}_NullValueObj : Tcl_NewStringObj (inet_ntoa (row->$fieldName), -1)"
@@ -4258,6 +4375,10 @@ proc gen_get_set_obj {obj type fieldName} {
 
 	varstring {
 	    return "Tcl_SetStringObj ($obj, row->$fieldName, row->_${fieldName}Length)"
+	}
+
+	refstring {
+	    return "Tcl_SetStringObj ($obj, row->$fieldName->value, row->$fieldName->length)"
 	}
 
 	char {
@@ -4704,6 +4825,11 @@ proc gen_gets_string_cases {} {
 	  "fixedstring" {
 	      emit "        *lengthPtr = $field(length);"
 	      emit "        return row->$myField;"
+	  }
+
+	  "refstring" {
+	      emit "        *lengthPtr = row->$myField->length;"
+	      emit "        return row->$myField->value;"
 	  }
 
 	  "char" {
@@ -5166,6 +5292,10 @@ proc gen_field_comp {fieldName} {
 	    emit [string range [subst -nobackslashes -nocommands $varstringFieldCompSource] 1 end-1]
 	}
 
+	refstring {
+	    emit [string range [subst -nobackslashes -nocommands $refstringFieldCompSource] 1 end-1]
+	}
+
 	boolean {
 	    emit [string range [subst -nobackslashes -nocommands $boolFieldCompSource] 1 end-1]
 	}
@@ -5345,6 +5475,10 @@ proc gen_sort_comp {} {
 
 	    varstring {
 		emit [string range [subst $varstringSortSource] 1 end-1]
+	    }
+
+	    refstring {
+		emit [string range [subst $refstringSortSource] 1 end-1]
 	    }
 
 	    boolean {
@@ -5589,6 +5723,11 @@ proc gen_search_comp {} {
 	    varstring {
 		set getObjCmd Tcl_GetString
 		emit [string range [subst -nobackslashes $varstringCompSource] 1 end-1]
+	    }
+
+	    refstring {
+		set getObjCmd Tcl_GetString
+		emit [string range [subst -nobackslashes $refstringCompSource] 1 end-1]
 	    }
 
 	    boolean {
