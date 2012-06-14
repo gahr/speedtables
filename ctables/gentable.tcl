@@ -245,7 +245,7 @@ proc gen_allocate_may_fail {ctable size {private 0}} {
 }
 
 #
-# Oposite function for free
+# Opposite function for free
 #
 proc gen_deallocate_private {ctable pointer} {
     return "ckfree((void *)($pointer))"
@@ -860,14 +860,14 @@ variable refstringSetSource {
 	string = Tcl_GetStringFromObj (obj, &len);
 [gen_unset_null_during_set_source $table $fieldName \
 	"if (len == 0 && [expr [string length $default] > 0]) string = \"$default\";
-	if (*string == *row->$fieldName->value && strcmp(row->$fieldName->value, string, $length) == 0)
+	if (*string == *row->$fieldName->value && strcmp(row->$fieldName->value, string) == 0)
 	    return TCL_OK;"]
 [gen_ctable_remove_from_index $fieldName]
 
 
 if (--row->$fieldName->refcount <= 0) {
 	// structure is not used by anyone else, so we have to free it.
-	ckfree(row->$fieldName);
+	[gen_deallocate $table row->$fieldName];
 }
 
 //TODO: see if the new value already exists in the index.
@@ -876,10 +876,10 @@ if (found) {
 	row->$fieldName->refcount++;
 } else {
 	// allocate a new ctable_RefString 
-	row->$fieldName = ckalloc(sizeof(ctable_RefString) + $length);
+	row->$fieldName = [gen_allocate $table {sizeof(ctable_RefString) + len}];
 	row->$fieldName->refcount = 1;
-	row->$fieldName->length = $length;
-	strncpy (row->$fieldName->value, string, $length);
+	row->$fieldName->length = len;
+	strncpy (row->$fieldName->value, string, len);
 }
 
 [gen_ctable_insert_into_index $fieldName]
@@ -1498,7 +1498,7 @@ variable refstringCompSource {
           int     strcmpResult;
 
 [gen_standard_comp_null_check_source $table $fieldName]
-          strcmpResult = strncmp (row->$fieldName->value, row1->$fieldName->value, $length);
+          strcmpResult = strcmp (row->$fieldName->value, row1->$fieldName->value);
 [gen_standard_comp_switch_source $fieldName]
         }
 }
@@ -2715,6 +2715,12 @@ proc varstring {fieldName args} {
 # refstring - define a reference-counted string field
 #
 proc refstring {fieldName args} {
+    array set field $args
+
+    # enforce indexed
+    if {![info exists field(indexed)] || !$field(indexed)} {
+	    error "refstring \"$fieldName\" must be indexed"
+	}
     deffield $fieldName [linsert $args 0 type refstring needsQuoting 1]
 }
 
@@ -5196,7 +5202,7 @@ variable varstringCompareEmptySource {
 
 
 #
-# fixedstringFieldCompSource - code we run subst over to generate a comapre of a 
+# fixedstringFieldCompSource - code we run subst over to generate a compare of a 
 # fixed-length string for use in a searching, sorting, etc.
 #
 variable fixedstringFieldCompSource {
@@ -5211,7 +5217,22 @@ variable fixedstringFieldCompSource {
 }
 
 #
-# binaryDataFieldCompSource - code we run subst over to generate a comapre of a 
+# refstringFieldCompSource - code we run subst over to generate a compare of a 
+# reference counted string for use in a searching, sorting, etc.
+#
+variable refstringFieldCompSource {
+    if (*row1->$fieldName->value != *row2->$fieldName->value) {
+        if (*row1->$fieldName->value < *row2->$fieldName->value) {
+	    return -1;
+	} else {
+	    return 1;
+	}
+    }
+    return strcmp (row1->$fieldName->value, row2->$fieldName->value);
+}
+
+#
+# binaryDataFieldCompSource - code we run subst over to generate a compare of a 
 # inline binary arrays (inets and mac addrs) for use in searching and sorting.
 #
 variable binaryDataFieldCompSource {
@@ -5241,6 +5262,7 @@ proc gen_field_comp {fieldName} {
     variable fixedstringFieldCompSource
     variable binaryDataFieldCompSource
     variable varstringFieldCompSource
+    variable refstringFieldCompSource
     variable boolFieldCompSource
     variable keyCompSource
     variable tclobjFieldCompSource
@@ -5426,6 +5448,7 @@ proc gen_sort_comp {} {
     variable fixedstringSortSource
     variable binaryDataSortSource
     variable varstringSortSource
+    variable refstringSortSource
     variable boolSortSource
     variable keySortSource
     variable tclobjSortSource
@@ -5657,6 +5680,7 @@ proc gen_search_comp {} {
     variable fixedstringCompSource
     variable binaryDataCompSource
     variable varstringCompSource
+    variable refstringCompSource
     variable boolCompSource
     variable keyCompSource
     variable tclobjCompSource
