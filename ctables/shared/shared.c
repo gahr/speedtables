@@ -68,7 +68,6 @@ FILE *logfp;
 #ifndef WITH_TCL
 char *ckalloc(size_t size)
 {
-#error "shouldn't load this"
     char *p = malloc(size);
     if(!p)
         shmpanic("Out of memory!");
@@ -108,10 +107,10 @@ void shared_perror(char *text) {
 
 
 #ifdef MAP_NOSYNC
-# define DEFAULT_FLAGS (MAP_SHARED|MAP_NOSYNC)
+# define DEFAULT_FLAGS (MAP_SHARED|MAP_NOSYNC|MAP_NOCORE)
 # define WITH_FLAGS 1
 #else
-# define DEFAULT_FLAGS MAP_SHARED
+# define DEFAULT_FLAGS (MAP_SHARED|MAP_NOCORE)
 # ifdef MAP_NOCORE
 #  define WITH_FLAGS 1
 # else
@@ -903,7 +902,7 @@ void shmfree_raw(shm_t *shm, char *memory)
 {
     garbage *entry;
 
-IFDEBUG(fprintf(SHM_DEBUG_FP, "shmfree_raw(shm, 0x%lX);\n", (long)block);)
+IFDEBUG(fprintf(SHM_DEBUG_FP, "shmfree_raw(shm, 0x%lX);\n", (long)memory);)
 
     if(memory < (char *)shm->map || memory >= ((char *)shm->map)+shm->map->mapsize)
         shmpanic("Trying to free pointer outside mapped memory!");
@@ -1630,8 +1629,8 @@ int shareCmd (ClientData cData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
     char        *sharename = NULL;
     shm_t       *share     = NULL;
 
-    static CONST char *commands[] = {"create", "attach", "list", "detach", "names", "get", "multiget", "set", "info", "pools", "pool", "free", (char *)NULL};
-    enum commands {CMD_CREATE, CMD_ATTACH, CMD_LIST, CMD_DETACH, CMD_NAMES, CMD_GET, CMD_MULTIGET, CMD_SET, CMD_INFO, CMD_POOLS, CMD_POOL, CMD_FREE };
+    static CONST char *commands[] = {"create", "attach", "list", "detach", "names", "get", "multiget", "set", "info", "pools", "pool", "free", "dump", (char *)NULL};
+    enum commands {CMD_CREATE, CMD_ATTACH, CMD_LIST, CMD_DETACH, CMD_NAMES, CMD_GET, CMD_MULTIGET, CMD_SET, CMD_INFO, CMD_POOLS, CMD_POOL, CMD_FREE, CMD_DUMP };
 
     static CONST struct {
         int need_share;         // if a missing share is an error
@@ -1649,7 +1648,8 @@ int shareCmd (ClientData cData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
         {1,  3, ""}, // CMD_INFO
         {1,  3, ""}, // CMD_POOLS
         {1,  6, "size blocks/chunk max_chunks"}, // CMD_POOL
-        {1,  -3, "?quick?"} // CMD_FREE
+        {1,  -3, "?quick?"}, // CMD_FREE
+        {1, 3, ""} // CMD_DUMP
     };
 
     if (Tcl_GetIndexFromObj (interp, objv[1], commands, "command", TCL_EXACT, &cmdIndex) != TCL_OK) {
@@ -1923,6 +1923,11 @@ int shareCmd (ClientData cData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
             }
             return TCL_OK;
         }
+
+	case CMD_DUMP: {
+	    shmdump(share);
+	    return TCL_OK;
+	}
     }
     Tcl_AppendResult(interp, "Should not happen, internal error: no defined subcommand or missing break in switch", NULL);
     return TCL_ERROR;
@@ -1965,13 +1970,21 @@ static void shmhexdump(unsigned char* start, size_t length)
         fprintf(stderr, "\n");
 }
 
+static char *short_filename (char *fileName) {
+    char *myFileName = strrchr (fileName, '/');
+    if (myFileName != NULL) {
+        return myFileName + 1;
+    }
+    return fileName;
+}
+
 char *shmalloc_guard(shm_t *map, size_t size LOGPARAMS)
 {
     unsigned char *memory = (unsigned char *)shmalloc_raw(map, size+GUARD_SIZE * 2 + CELLSIZE);
     if(memory) {
 #ifdef SHARED_LOG
         if(logfp) {
-            fprintf(logfp, "%s:%d alloc %ld @ 0x%lx\n", File, Line, (long)size, (long)(memory+GUARD_SIZE + CELLSIZE));
+            fprintf(logfp, "%s:%d alloc %ld @ 0x%lx\n", short_filename (File), Line, (long)size, (long)(memory+GUARD_SIZE + CELLSIZE));
             fflush(logfp);
         }
 #endif
@@ -1989,7 +2002,7 @@ char *shmalloc_guard(shm_t *map, size_t size LOGPARAMS)
 #ifdef SHARED_LOG
     else
         if(logfp) {
-            fprintf(logfp, "%s:%d alloc %ld FAILED\n", File, Line, (long)size);
+            fprintf(logfp, "%s:%d alloc %ld FAILED\n", short_filename (File), Line, (long)size);
             fflush(logfp);
         }
 #endif
@@ -2002,7 +2015,7 @@ void shmfree_guard(shm_t *map, char *block LOGPARAMS)
     int size;
 #ifdef SHARED_LOG
     if(logfp) {
-        fprintf(logfp, "%s:%d free @ 0x%lx\n", File, Line, (long)block);
+        fprintf(logfp, "%s:%d free @ 0x%lx\n", short_filename (File), Line, (long)block);
         fflush(logfp);
     }
 #endif
@@ -2031,7 +2044,7 @@ int shmdealloc_guard(shm_t *shm, char *data LOGPARAMS)
     int size;
 #ifdef SHARED_LOG
     if(logfp) {
-        fprintf(logfp, "%s:%d dealloc @ 0x%lx\n", File, Line, (long)data);
+        fprintf(logfp, "%s:%d dealloc @ 0x%lx\n", short_filename (File), Line, (long)data);
         fflush(logfp);
     }
 #endif

@@ -1,3 +1,26 @@
+07/21/2012 peter
+    * Add detach option for sockets for shared memory speedtables.
+
+07/09/2012 karl
+    * Provide a variable ::stapi::cache_table_columns that if set (default 1),
+      caches the results of ::stapi::get_columns to get all the field names
+      and data types of each field for a specified table.  Should greatly
+      reduce contention for pg_class, pg_attribute and pg_type when lots
+      of children are using stapi to connect to lots of tables.
+
+06/29/2012 karl
+    * When a stapi table has a key comprised of more than one field, 
+      generate a coalesce(field,'') so that where one or more of the
+      compound key fields are null, you'll still get a reasonable compound 
+      key, rather than a null.
+
+06/20/2012 karl
+    * Make -fields work properly for sql-based stapi searches.
+
+06/18/2012 karl
+    * Add support to stapi postgres tables for speedtable search 
+      options -array and -array_get
+
 06/11/2012 karl
     * Factor a gen_refresh_ctable_sql proc out of refresh_ctable.
 
