@@ -927,7 +927,11 @@ IFDEBUG(fprintf(SHM_DEBUG_FP, "shmfree_raw to garbage pool 0x%08lx\n", (long)shm
 // Attempt to put a pending freed block back in a pool
 int shmdepool(poolhead_t *head, char *block)
 {
+    int poolcount = 0;
+    poolhead_t *pooltest = head;
     while(head) {
+        int chunkcount = 0;
+        chunk_t *chunktest = head->chunks;
         chunk_t *chunk = head->chunks;
         if (head->magic != POOL_MAGIC)
           shmpanic("Invalid pool magic!");
@@ -939,6 +943,14 @@ int shmdepool(poolhead_t *head, char *block)
 
             if(offset < 0 || offset > (head->nblocks * head->blocksize)) {
                 chunk = chunk->next;
+
+                if (chunk == chunktest) {
+                  fprintf(stderr, "Cycle detected in chunk (%d iterations at %p).", chunkcount, chunk);
+                  shmpanic("Cycle detected in chunk.");
+                }
+                if ((++chunkcount & 1) == 0) {
+                  chunktest = chunktest->next;
+                }
                 continue;
             }
 
@@ -955,6 +967,16 @@ int shmdepool(poolhead_t *head, char *block)
             return 1;
         }
         head = head->next;
+
+
+        if (head == pooltest) {
+          fprintf(stderr, "Cycle detected in pool (%d iterations at %p).", poolcount, head);
+          shmpanic("Cycle detected in pool.");
+        }
+        if ((++poolcount & 1) == 0) {
+          pooltest = pooltest->next;
+        }
+
     }
     return 0;
 }
