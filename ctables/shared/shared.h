@@ -13,6 +13,7 @@
 #include <boost/interprocess/containers/vector.hpp>
 #include <boost/interprocess/allocators/allocator.hpp>
 #include <boost/container/deque.hpp>
+#include <boost/flyweights.hpp>
 using namespace boost::interprocess;
 using namespace boost::container;
 

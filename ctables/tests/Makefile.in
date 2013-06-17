@@ -138,6 +138,11 @@ barnrow:
 	rm -f *.dat
 	$(TCLSH) barnrow.tcl
 
+dedupe:
+	rm -rf stobj
+	rm -f *.dat
+	$(TCLSH) dedupe.tcl
+
 gbarnrow:
 	rm -rf stobj
 	rm -f *.dat

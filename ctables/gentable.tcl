@@ -2705,6 +2705,21 @@ proc varstring {fieldName args} {
 }
 
 #
+# dedupestring - define a reference-counted variable-length string field
+#
+# If "key 1" is in the argument list, make it a "key" instead
+#
+proc dedupestring {fieldName args} {
+    if {[set i [lsearch -exact "key" $args]] % 2 == 0} {
+	incr i
+	if {[lindex $args $i]} {
+	    return [eval [list key $fieldName] $args]
+	}
+    }
+    deffield $fieldName [linsert $args 0 type dedupestring needsQuoting 1]
+}
+
+#
 # char - define a single character field -- this should probably just be
 #  fixedstring[1] but it's simpler.  shrug.
 #
@@ -3272,6 +3287,10 @@ proc gen_struct {} {
 		putfield int  "_$field(name)Length"
 		putfield int  "_$field(name)AllocatedLength"
 	    }
+
+		dedupestring {
+		putfield "flyweight<string>" "$field(name)"
+		}
 
 	    fixedstring {
 		putfield char "$field(name)\[$field(length)]"
