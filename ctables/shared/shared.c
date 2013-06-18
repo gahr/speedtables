@@ -231,6 +231,7 @@ int unmap_file(shm_t   *share)
       delete share->garbage;
     }
     ckfree(share->filename);
+    delete share->str_allocator;
     delete share->managed_shm;
 
     ckfree((char*)share);
