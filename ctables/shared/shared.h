@@ -14,9 +14,12 @@
 #include <boost/interprocess/allocators/allocator.hpp>
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/container/deque.hpp>
-#include <boost/flyweights.hpp>
+#include <boost/flyweight/static_holder.hpp>
+#include <boost/flyweight/simple_locking.hpp>
+#include <boost/flyweight/refcounted.hpp>
 using namespace boost::interprocess;
 using namespace boost::container;
+using namespace boost::flyweights;
 
 
 #define WITH_SHMEM_SYMBOL_LIST
