@@ -12,6 +12,7 @@
 #include <boost/interprocess/managed_mapped_file.hpp>
 #include <boost/interprocess/containers/vector.hpp>
 #include <boost/interprocess/allocators/allocator.hpp>
+#include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/container/deque.hpp>
 #include <boost/flyweights.hpp>
 using namespace boost::interprocess;
@@ -114,10 +115,16 @@ struct object_t {
     char               name[];
 };
 
+typedef allocator<std::string, managed_shared_memory::segment_manager> shared_string_allocator_t;
+
 struct shm_t {
     shm_t	*next;
 
     managed_mapped_file *managed_shm;
+
+
+    shared_string_allocator_t *str_allocator;
+
     volatile mapheader_t *map;                 // points within shmem.
     char                 *share_base;           // points to front of shmem.
     size_t		 size;

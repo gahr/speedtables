@@ -162,6 +162,7 @@ shm_t *map_file(const char *file, char *addr, size_t default_size, int flags, in
     // Completely initialise all fields!
     p->map = mh;
     p->managed_shm = mmf;
+    p->str_allocator = new shared_string_allocator_t(mmf->get_segment_manager());
     p->share_base = addr;
     p->size = default_size;
     p->flags = flags;
